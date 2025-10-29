@@ -6,8 +6,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/httprunner/funplugin/fungo"
-	"github.com/httprunner/funplugin/myexec"
+	"github.com/lingcetech/funplugin/fungo"
+	"github.com/lingcetech/funplugin/myexec"
 	"github.com/stretchr/testify/assert"
 )
 

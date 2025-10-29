@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/httprunner/funplugin/fungo"
+	"github.com/lingcetech/funplugin/fungo"
 )
 
 // register functions and build to plugin binary

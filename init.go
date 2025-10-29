@@ -7,8 +7,8 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/pkg/errors"
 
-	"github.com/httprunner/funplugin/fungo"
-	"github.com/httprunner/funplugin/myexec"
+	"github.com/lingcetech/funplugin/fungo"
+	"github.com/lingcetech/funplugin/myexec"
 )
 
 var (

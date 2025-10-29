@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/httprunner/funplugin/fungo"
+	"github.com/lingcetech/funplugin/fungo"
 	"github.com/pkg/errors"
 )
 

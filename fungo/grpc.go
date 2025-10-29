@@ -7,8 +7,8 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 
-	"github.com/httprunner/funplugin/fungo/protoGen"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/lingcetech/funplugin/fungo/protoGen"
 )
 
 // replace with third-party json library to improve performance
