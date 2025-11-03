@@ -2,11 +2,15 @@ package myexec
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 
 	"github.com/lingcetech/funplugin/fungo"
@@ -338,4 +342,87 @@ func UninstallPip(python3 string) error {
 
 	logger.Info("pip uninstalled successfully", "python3", python3)
 	return nil
+}
+
+// PyPI项目信息结构体
+type pypiProject struct {
+	Releases map[string]interface{} `json:"releases"`
+}
+
+// GetPythonPackageVersions 查询指定Python包的所有可用版本
+// 返回版本号切片（按版本号从旧到新排序）
+func GetPythonPackageVersions(pkgName string) ([]string, error) {
+	if pkgName == "" {
+		return nil, errors.New("package name cannot be empty")
+	}
+
+	// 调用PyPI的JSON API
+	url := fmt.Sprintf("https://pypi.org/pypi/%s/json", pkgName)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to fetch package info for %s", pkgName)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, errors.Errorf("package %s not found (status code: %d)", pkgName, resp.StatusCode)
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read response body")
+	}
+
+	var project pypiProject
+	if err := json.Unmarshal(body, &project); err != nil {
+		return nil, errors.Wrap(err, "failed to parse JSON response")
+	}
+
+	// 提取版本号并排序
+	versions := make([]string, 0, len(project.Releases))
+	for version := range project.Releases {
+		versions = append(versions, version)
+	}
+
+	// 按版本号排序（简单处理，更复杂的版本排序可能需要专门的库）
+	sort.Slice(versions, func(i, j int) bool {
+		return compareVersions(versions[i], versions[j]) > 0
+	})
+	return versions, nil
+}
+
+// 简单的版本号比较函数
+// 返回值：-1:i<j, 0:i==j, 1:i>j
+func compareVersions(a, b string) int {
+	aParts := strings.Split(a, ".")
+	bParts := strings.Split(b, ".")
+
+	maxLen := len(aParts)
+	if len(bParts) > maxLen {
+		maxLen = len(bParts)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		aPart := getVersionPart(aParts, i)
+		bPart := getVersionPart(bParts, i)
+
+		if aPart < bPart {
+			return -1
+		} else if aPart > bPart {
+			return 1
+		}
+	}
+
+	return 0
+}
+
+// 获取版本号的第i个部分（处理长度不足的情况）
+func getVersionPart(parts []string, i int) int {
+	if i < len(parts) {
+		// 尝试将字符串转换为整数
+		var num int
+		fmt.Sscanf(parts[i], "%d", &num)
+		return num
+	}
+	return 0
 }
