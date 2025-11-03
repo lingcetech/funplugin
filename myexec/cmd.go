@@ -41,7 +41,7 @@ func EnsurePython3Venv(venv string, packages ...string) (python3 string, err err
 		if err != nil {
 			return "", errors.Wrap(err, "get user home dir failed")
 		}
-		venv = filepath.Join(home, ".hrp", "venv")
+		venv = filepath.Join(home, ".lc", "venv")
 	}
 	python3, err = ensurePython3Venv(venv, packages...)
 	if err != nil {
@@ -197,5 +197,145 @@ func ExecCommandInDir(cmd *exec.Cmd, dir string) error {
 		return err
 	}
 
+	return nil
+}
+
+func UninstallPythonPackage(python3 string, pkg string) (err error) {
+	// 提取包名（忽略版本信息，卸载只需要包名）
+	pkgName := pkg
+	if strings.Contains(pkg, "==") {
+		// 如果包含版本号，只取包名部分
+		pkgInfo := strings.Split(pkg, "==")
+		pkgName = pkgInfo[0]
+	}
+
+	// 检查包是否已安装（无论版本，只要安装了就需要卸载）
+	// 注意：这里复用AssertPythonPackage时，若传入空版本，会检查是否存在任意版本
+	err = AssertPythonPackage(python3, pkgName, "")
+	if err != nil {
+		// 包未安装，无需卸载
+		logger.Info("python package is not installed, no need to uninstall", "pkgName", pkgName)
+		return nil
+	}
+
+	// 检查pip是否可用
+	err = RunCommand(python3, "-m", "pip", "--version")
+	if err != nil {
+		logger.Warn("pip is not available")
+		return errors.Wrap(err, "pip is not available")
+	}
+
+	logger.Info("uninstalling python package", "pkgName", pkgName)
+
+	// 执行卸载命令
+	err = RunCommand(python3, "-m", "pip", "uninstall", pkgName, "-y",
+		"--quiet", "--disable-pip-version-check")
+	if err != nil {
+		return errors.Wrap(err, "pip uninstall package failed")
+	}
+
+	// 验证卸载是否成功（检查包是否已不存在）
+	err = AssertPythonPackage(python3, pkgName, "")
+	if err == nil {
+		// 若检查结果为未报错，说明包仍存在，卸载失败
+		return errors.New("package still exists after uninstall")
+	}
+
+	logger.Info("python package uninstalled successfully", "pkgName", pkgName)
+	return nil
+}
+
+func GetPythonPackage(python3 string) {
+	err := RunCommand(python3, "-m", "pip", "list")
+	if err != nil {
+		logger.Error("failed to list python packages", "name", python3)
+		return
+	}
+}
+
+// InstallPip 安装pip（修复SSL证书验证错误版本）
+func InstallPip(python3 string) error {
+	logger.Info("检查pip是否已安装", "python3", python3)
+	if err := RunCommand(python3, "-m", "pip", "--version"); err == nil {
+		logger.Info("pip已安装，无需重复操作", "python3", python3)
+		return nil
+	}
+
+	getPipURL := "https://bootstrap.pypa.io/get-pip.py"
+	if customURL := os.Getenv("GET_PIP_URL"); customURL != "" {
+		getPipURL = customURL
+		logger.Info("使用自定义get-pip脚本地址", "url", getPipURL)
+	}
+
+	pythonScript := fmt.Sprintf(`
+import urllib.request, sys, ssl
+try:
+    # 忽略SSL证书验证（适用于内部环境/无证书场景）
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+    
+    # 使用带SSL上下文的请求获取脚本
+    with urllib.request.urlopen("%s", context=ssl_context) as response:
+        exec(response.read())
+    print("pip安装成功")
+except Exception as e:
+    print(f"pip安装失败: {str(e)}", file=sys.stderr)
+    sys.exit(1)
+`, getPipURL)
+
+	logger.Info("开始安装pip（已忽略SSL证书验证）", "url", getPipURL)
+	cmd := exec.Command(python3, "-c", pythonScript)
+
+	// 捕获输出，方便调试
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		logger.Error("pip安装失败",
+			"stdout", stdout.String(),
+			"stderr", stderr.String(),
+			"执行脚本", pythonScript)
+		return errors.Wrapf(err, "pip安装失败: %s", stderr.String())
+	}
+
+	logger.Info("验证pip安装状态")
+	if err := RunCommand(python3, "-m", "pip", "--version"); err != nil {
+		return errors.Wrap(err, "pip安装成功但验证失败")
+	}
+
+	logger.Info("pip安装完成", "python3", python3)
+	return nil
+}
+
+// UninstallPip uninstalls pip from the specified Python3 executable
+// It uses pip's own uninstall command for clean removal
+func UninstallPip(python3 string) error {
+	// Step 1: Check if pip is installed (skip if not present)
+	logger.Info("checking if pip is installed", "python3", python3)
+	err := RunCommand(python3, "-m", "pip", "--version")
+	if err != nil {
+		logger.Info("pip is not installed, no need to uninstall", "python3", python3)
+		return nil
+	}
+
+	// Step 2: Uninstall pip (use -y to skip confirmation)
+	logger.Info("uninstalling pip", "python3", python3)
+	err = RunCommand(python3, "-m", "pip", "uninstall", "pip", "-y",
+		"--quiet", "--disable-pip-version-check")
+	if err != nil {
+		return errors.Wrap(err, "failed to uninstall pip via pip command")
+	}
+
+	// Step 3: Verify pip uninstallation
+	logger.Info("verifying pip uninstallation")
+	err = RunCommand(python3, "-m", "pip", "--version")
+	if err == nil {
+		// If no error, pip is still present (uninstall failed)
+		return errors.New("pip still exists after uninstallation")
+	}
+
+	logger.Info("pip uninstalled successfully", "python3", python3)
 	return nil
 }
