@@ -45,7 +45,7 @@ func EnsurePython3Venv(venv string, packages ...string) (python3 string, err err
 		if err != nil {
 			return "", errors.Wrap(err, "get user home dir failed")
 		}
-		venv = filepath.Join(home, ".lc", "venv")
+		venv = filepath.Join(home, ".yf", "venv")
 	}
 	python3, err = ensurePython3Venv(venv, packages...)
 	if err != nil {
